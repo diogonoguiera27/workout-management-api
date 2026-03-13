@@ -22,7 +22,7 @@ export const auth =  betterAuth({
     advanced: {
         crossSubDomainCookies: {
             enabled: true,
-            
+            domain: env.NODE_ENV === "production" ? ".devdiogo.online" : undefined
         }
     }
 })
