@@ -24,14 +24,14 @@ FROM deps AS build
 COPY . .
 
 RUN pnpm run build
+RUN pnpm prune --prod
 
 
 # -------- Production --------
 FROM base AS production
 
-RUN pnpm install --frozen-lockfile --prod
-
 COPY package.json ./
+COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
 CMD ["node", "dist/index.js"]
