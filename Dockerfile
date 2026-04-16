@@ -23,13 +23,13 @@ FROM deps AS build
 
 COPY . .
 
-RUN pnpm run build && cp -r src/generated dist/generated
+RUN pnpm run build
 
 
 # -------- Production --------
 FROM base AS production
 
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts
+RUN pnpm install --frozen-lockfile --prod
 
 COPY --from=build /app/dist ./dist
 
