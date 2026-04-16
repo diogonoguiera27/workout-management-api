@@ -5,44 +5,67 @@ import {
 } from "../errors/index.js";
 import { prisma } from "../lib/db.js";
 
-interface InputDto {
+interface StartWorkoutSessionInput {
   userId: string;
   workoutPlanId: string;
   workoutDayId: string;
 }
 
-interface OutputDto {
+interface StartWorkoutSessionOutput {
   userWorkoutSessionId: string;
 }
 
 export class StartWorkoutSession {
-  async execute(dto: InputDto): Promise<OutputDto> {
-    const workoutPlan = await prisma.workoutPlan.findUnique({
-      where: { id: dto.workoutPlanId },
+  async execute(
+    input: StartWorkoutSessionInput,
+  ): Promise<StartWorkoutSessionOutput> {
+    await this.ensureWorkoutPlanExists(input);
+    await this.ensureWorkoutDayExists(input);
+    await this.ensureWorkoutSessionHasNotStarted(input);
+
+    const session = await prisma.workoutSession.create({
+      data: {
+        workoutDayId: input.workoutDayId,
+        startedAt: new Date(),
+      },
     });
 
-    if (!workoutPlan) {
-      throw new NotFoundError("Workout plan not found");
-    }
+    return this.buildStartWorkoutSessionResponse(session.id);
+  }
 
-    if (workoutPlan.userId !== dto.userId) {
+  private async ensureWorkoutPlanExists(
+    input: StartWorkoutSessionInput,
+  ): Promise<void> {
+    const workoutPlan = await prisma.workoutPlan.findUnique({
+      where: { id: input.workoutPlanId },
+    });
+
+    if (!workoutPlan || workoutPlan.userId !== input.userId) {
       throw new NotFoundError("Workout plan not found");
     }
 
     if (!workoutPlan.isActive) {
       throw new WorkoutPlanNotActiveError("Workout plan is not active");
     }
+  }
 
+  private async ensureWorkoutDayExists(
+    input: StartWorkoutSessionInput,
+  ): Promise<void> {
     const workoutDay = await prisma.workoutDay.findUnique({
-      where: { id: dto.workoutDayId, workoutPlanId: dto.workoutPlanId },
+      where: { id: input.workoutDayId, workoutPlanId: input.workoutPlanId },
     });
 
     if (!workoutDay) {
       throw new NotFoundError("Workout day not found");
     }
+  }
 
+  private async ensureWorkoutSessionHasNotStarted(
+    input: StartWorkoutSessionInput,
+  ): Promise<void> {
     const existingSession = await prisma.workoutSession.findFirst({
-      where: { workoutDayId: dto.workoutDayId },
+      where: { workoutDayId: input.workoutDayId },
     });
 
     if (existingSession) {
@@ -50,16 +73,13 @@ export class StartWorkoutSession {
         "A session has already been started for this day",
       );
     }
+  }
 
-    const session = await prisma.workoutSession.create({
-      data: {
-        workoutDayId: dto.workoutDayId,
-        startedAt: new Date(),
-      },
-    });
-
+  private buildStartWorkoutSessionResponse(
+    sessionId: string,
+  ): StartWorkoutSessionOutput {
     return {
-      userWorkoutSessionId: session.id,
+      userWorkoutSessionId: sessionId,
     };
   }
 }

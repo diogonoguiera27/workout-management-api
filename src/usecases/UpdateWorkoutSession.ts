@@ -1,7 +1,7 @@
 import { NotFoundError } from "../errors/index.js";
 import { prisma } from "../lib/db.js";
 
-interface InputDto {
+interface UpdateWorkoutSessionInput {
   userId: string;
   workoutPlanId: string;
   workoutDayId: string;
@@ -9,43 +9,69 @@ interface InputDto {
   completedAt: string;
 }
 
-interface OutputDto {
+interface UpdateWorkoutSessionOutput {
   id: string;
   startedAt: string;
   completedAt: string;
 }
 
 export class UpdateWorkoutSession {
-  async execute(dto: InputDto): Promise<OutputDto> {
-    const workoutPlan = await prisma.workoutPlan.findUnique({
-      where: { id: dto.workoutPlanId },
+  async execute(
+    input: UpdateWorkoutSessionInput,
+  ): Promise<UpdateWorkoutSessionOutput> {
+    await this.ensureWorkoutPlanExists(input);
+    await this.ensureWorkoutDayExists(input);
+    await this.ensureWorkoutSessionExists(input);
+
+    const updatedSession = await prisma.workoutSession.update({
+      where: { id: input.sessionId },
+      data: { completedAt: new Date(input.completedAt) },
     });
 
-    if (!workoutPlan || workoutPlan.userId !== dto.userId) {
+    return this.buildUpdateWorkoutSessionResponse(updatedSession);
+  }
+
+  private async ensureWorkoutPlanExists(
+    input: UpdateWorkoutSessionInput,
+  ): Promise<void> {
+    const workoutPlan = await prisma.workoutPlan.findUnique({
+      where: { id: input.workoutPlanId },
+    });
+
+    if (!workoutPlan || workoutPlan.userId !== input.userId) {
       throw new NotFoundError("Workout plan not found");
     }
+  }
 
+  private async ensureWorkoutDayExists(
+    input: UpdateWorkoutSessionInput,
+  ): Promise<void> {
     const workoutDay = await prisma.workoutDay.findUnique({
-      where: { id: dto.workoutDayId, workoutPlanId: dto.workoutPlanId },
+      where: { id: input.workoutDayId, workoutPlanId: input.workoutPlanId },
     });
 
     if (!workoutDay) {
       throw new NotFoundError("Workout day not found");
     }
+  }
 
+  private async ensureWorkoutSessionExists(
+    input: UpdateWorkoutSessionInput,
+  ): Promise<void> {
     const session = await prisma.workoutSession.findUnique({
-      where: { id: dto.sessionId, workoutDayId: dto.workoutDayId },
+      where: { id: input.sessionId, workoutDayId: input.workoutDayId },
     });
 
     if (!session) {
       throw new NotFoundError("Workout session not found");
     }
+  }
 
-    const updatedSession = await prisma.workoutSession.update({
-      where: { id: dto.sessionId },
-      data: { completedAt: new Date(dto.completedAt) },
-    });
-
+  private buildUpdateWorkoutSessionResponse(updatedSession: {
+    id: string;
+    startedAt: Date;
+    completedAt: Date | null;
+  }): UpdateWorkoutSessionOutput {
     return {
       id: updatedSession.id,
       startedAt: updatedSession.startedAt.toISOString(),

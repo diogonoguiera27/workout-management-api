@@ -1,30 +1,55 @@
+import { Prisma, WeekDay } from "@prisma/client";
+
 import { NotFoundError } from "../errors/index.js";
-import { WeekDay } from "../generated/prisma/enums.js";
 import { prisma } from "../lib/db.js";
 
-interface InputDto {
+interface GetWorkoutPlanInput {
   userId: string;
   workoutPlanId: string;
 }
 
-interface OutputDto {
+interface GetWorkoutPlanWorkoutDayOutput {
   id: string;
+  weekDay: WeekDay;
   name: string;
-  workoutDays: Array<{
-    id: string;
-    weekDay: WeekDay;
-    name: string;
-    isRest: boolean;
-    coverImageUrl?: string;
-    estimatedDurationInSeconds: number;
-    exercisesCount: number;
-  }>;
+  isRest: boolean;
+  coverImageUrl?: string;
+  estimatedDurationInSeconds: number;
+  exercisesCount: number;
 }
 
+interface GetWorkoutPlanOutput {
+  id: string;
+  name: string;
+  workoutDays: GetWorkoutPlanWorkoutDayOutput[];
+}
+
+type WorkoutPlanWithWorkoutDayCounts = Prisma.WorkoutPlanGetPayload<{
+  include: {
+    workoutDays: {
+      include: {
+        _count: {
+          select: {
+            exercises: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
 export class GetWorkoutPlan {
-  async execute(dto: InputDto): Promise<OutputDto> {
-    const workoutPlan = await prisma.workoutPlan.findUnique({
-      where: { id: dto.workoutPlanId },
+  async execute(input: GetWorkoutPlanInput): Promise<GetWorkoutPlanOutput> {
+    const workoutPlanDetails = await this.findAuthorizedWorkoutPlan(input);
+
+    return this.buildWorkoutPlanResponse(workoutPlanDetails);
+  }
+
+  private async findAuthorizedWorkoutPlan(
+    input: GetWorkoutPlanInput,
+  ): Promise<WorkoutPlanWithWorkoutDayCounts> {
+    const workoutPlanDetails = await prisma.workoutPlan.findUnique({
+      where: { id: input.workoutPlanId },
       include: {
         workoutDays: {
           include: {
@@ -36,21 +61,27 @@ export class GetWorkoutPlan {
       },
     });
 
-    if (!workoutPlan || workoutPlan.userId !== dto.userId) {
+    if (!workoutPlanDetails || workoutPlanDetails.userId !== input.userId) {
       throw new NotFoundError("Workout plan not found");
     }
 
+    return workoutPlanDetails;
+  }
+
+  private buildWorkoutPlanResponse(
+    workoutPlanDetails: WorkoutPlanWithWorkoutDayCounts,
+  ): GetWorkoutPlanOutput {
     return {
-      id: workoutPlan.id,
-      name: workoutPlan.name,
-      workoutDays: workoutPlan.workoutDays.map((day) => ({
-        id: day.id,
-        weekDay: day.weekDay,
-        name: day.name,
-        isRest: day.isRest,
-        coverImageUrl: day.coverImageUrl ?? undefined,
-        estimatedDurationInSeconds: day.estimatedDurationInSeconds,
-        exercisesCount: day._count.exercises,
+      id: workoutPlanDetails.id,
+      name: workoutPlanDetails.name,
+      workoutDays: workoutPlanDetails.workoutDays.map((workoutDay) => ({
+        id: workoutDay.id,
+        weekDay: workoutDay.weekDay,
+        name: workoutDay.name,
+        isRest: workoutDay.isRest,
+        coverImageUrl: workoutDay.coverImageUrl ?? undefined,
+        estimatedDurationInSeconds: workoutDay.estimatedDurationInSeconds,
+        exercisesCount: workoutDay._count.exercises,
       })),
     };
   }

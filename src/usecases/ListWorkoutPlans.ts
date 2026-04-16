@@ -1,39 +1,58 @@
-import { WeekDay } from "../generated/prisma/enums.js";
+import { Prisma, WeekDay } from "@prisma/client";
+
 import { prisma } from "../lib/db.js";
 
-interface InputDto {
+interface ListWorkoutPlansInput {
   userId: string;
   active?: boolean;
 }
 
-interface OutputDto {
+interface ListWorkoutPlansExerciseOutput {
+  id: string;
+  order: number;
+  name: string;
+  sets: number;
+  reps: number;
+  restTimeInSeconds: number;
+}
+
+interface ListWorkoutPlansWorkoutDayOutput {
+  id: string;
+  name: string;
+  weekDay: WeekDay;
+  isRest: boolean;
+  estimatedDurationInSeconds: number;
+  coverImageUrl?: string;
+  exercises: ListWorkoutPlansExerciseOutput[];
+}
+
+interface ListWorkoutPlansOutput {
   id: string;
   name: string;
   isActive: boolean;
-  workoutDays: Array<{
-    id: string;
-    name: string;
-    weekDay: WeekDay;
-    isRest: boolean;
-    estimatedDurationInSeconds: number;
-    coverImageUrl?: string;
-    exercises: Array<{
-      id: string;
-      order: number;
-      name: string;
-      sets: number;
-      reps: number;
-      restTimeInSeconds: number;
-    }>;
-  }>;
+  workoutDays: ListWorkoutPlansWorkoutDayOutput[];
 }
 
+type WorkoutPlanWithRelations = Prisma.WorkoutPlanGetPayload<{
+  include: {
+    workoutDays: {
+      include: {
+        exercises: {
+          orderBy: {
+            order: "asc";
+          };
+        };
+      };
+    };
+  };
+}>;
+
 export class ListWorkoutPlans {
-  async execute(dto: InputDto): Promise<OutputDto[]> {
+  async execute(input: ListWorkoutPlansInput): Promise<ListWorkoutPlansOutput[]> {
     const workoutPlans = await prisma.workoutPlan.findMany({
       where: {
-        userId: dto.userId,
-        ...(dto.active !== undefined ? { isActive: dto.active } : {}),
+        userId: input.userId,
+        ...(input.active !== undefined ? { isActive: input.active } : {}),
       },
       include: {
         workoutDays: {
@@ -45,18 +64,24 @@ export class ListWorkoutPlans {
       orderBy: { createdAt: "desc" },
     });
 
-    return workoutPlans.map((plan) => ({
-      id: plan.id,
-      name: plan.name,
-      isActive: plan.isActive,
-      workoutDays: plan.workoutDays.map((day) => ({
-        id: day.id,
-        name: day.name,
-        weekDay: day.weekDay,
-        isRest: day.isRest,
-        estimatedDurationInSeconds: day.estimatedDurationInSeconds,
-        coverImageUrl: day.coverImageUrl ?? undefined,
-        exercises: day.exercises.map((exercise) => ({
+    return this.buildWorkoutPlansResponse(workoutPlans);
+  }
+
+  private buildWorkoutPlansResponse(
+    workoutPlans: WorkoutPlanWithRelations[],
+  ): ListWorkoutPlansOutput[] {
+    return workoutPlans.map((workoutPlan) => ({
+      id: workoutPlan.id,
+      name: workoutPlan.name,
+      isActive: workoutPlan.isActive,
+      workoutDays: workoutPlan.workoutDays.map((workoutDay) => ({
+        id: workoutDay.id,
+        name: workoutDay.name,
+        weekDay: workoutDay.weekDay,
+        isRest: workoutDay.isRest,
+        estimatedDurationInSeconds: workoutDay.estimatedDurationInSeconds,
+        coverImageUrl: workoutDay.coverImageUrl ?? undefined,
+        exercises: workoutDay.exercises.map((exercise) => ({
           id: exercise.id,
           order: exercise.order,
           name: exercise.name,

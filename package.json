@@ -5,7 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "tsx --watch src/index.ts",
-    "build": "pnpm exec prisma generate && tsc"
+    "build": "pnpm exec prisma generate && tsc",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.config.js",
+    "test:unit": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.config.js --selectProjects unit",
+    "test:fast": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.config.js --selectProjects unit smoke-validation",
+    "test:db": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.config.js --selectProjects db --runInBand",
+    "test:performance": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.performance.config.js --runInBand",
+    "test:load": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.load.config.js --runInBand",
+    "test:stress": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.stress.config.js --runInBand",
+    "test:database": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.database.config.js --runInBand"
   },
   "engines": {
     "node": "24.x"
@@ -37,11 +45,16 @@
     "@anthropic-ai/claude-code": "^2.1.68",
     "@better-auth/cli": "1.4.18",
     "@eslint/js": "^10.0.1",
+    "@types/jest": "^30.0.0",
+    "@types/supertest": "^7.2.0",
     "eslint": "9.39.2",
     "eslint-plugin-simple-import-sort": "12.1.1",
     "globals": "^17.3.0",
+    "jest": "^30.3.0",
     "prettier": "3.8.1",
     "prisma": "7.4.0",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.6",
     "tsx": "4.21.0",
     "typescript-eslint": "^8.56.1"
   }

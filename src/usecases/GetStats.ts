@@ -16,33 +16,85 @@ const WEEKDAY_MAP: Record<number, string> = {
   6: "SATURDAY",
 };
 
-interface InputDto {
+interface GetStatsInput {
   userId: string;
   from: string;
   to: string;
 }
 
-interface OutputDto {
+interface GetStatsConsistencyByDay {
+  workoutDayCompleted: boolean;
+  workoutDayStarted: boolean;
+}
+
+interface GetStatsOutput {
   workoutStreak: number;
-  consistencyByDay: Record<
-    string,
-    {
-      workoutDayCompleted: boolean;
-      workoutDayStarted: boolean;
-    }
-  >;
+  consistencyByDay: Record<string, GetStatsConsistencyByDay>;
   completedWorkoutsCount: number;
   conclusionRate: number;
   totalTimeInSeconds: number;
 }
 
-export class GetStats {
-  async execute(dto: InputDto): Promise<OutputDto> {
-    const fromDate = dayjs.utc(dto.from).startOf("day");
-    const toDate = dayjs.utc(dto.to).endOf("day");
+interface GetStatsAnalysisPeriod {
+  fromDate: dayjs.Dayjs;
+  toDate: dayjs.Dayjs;
+}
 
-    const workoutPlan = await prisma.workoutPlan.findFirst({
-      where: { userId: dto.userId, isActive: true },
+interface GetStatsSession {
+  startedAt: Date;
+  completedAt: Date | null;
+}
+
+interface GetStatsCompletedSession {
+  startedAt: Date;
+  completedAt: Date;
+}
+
+export class GetStats {
+  async execute(input: GetStatsInput): Promise<GetStatsOutput> {
+    const analysisPeriod = this.buildAnalysisPeriod(input);
+
+    const activeWorkoutPlan = await this.findActiveWorkoutPlan(input.userId);
+    const sessions = await this.findSessionsInPeriod(
+      activeWorkoutPlan.id,
+      analysisPeriod,
+    );
+
+    const consistencyByDay = this.buildConsistencyByDay(sessions);
+    const completedSessions = this.findCompletedSessions(sessions);
+    const completedWorkoutsCount = completedSessions.length;
+    const conclusionRate = this.calculateConclusionRate(
+      sessions.length,
+      completedWorkoutsCount,
+    );
+    const totalTimeInSeconds = this.calculateTotalTimeInSeconds(
+      completedSessions,
+    );
+    const workoutStreak = await this.calculateStreak(
+      activeWorkoutPlan.id,
+      activeWorkoutPlan.workoutDays,
+      analysisPeriod.toDate,
+    );
+
+    return this.buildGetStatsResponse({
+      workoutStreak,
+      consistencyByDay,
+      completedWorkoutsCount,
+      conclusionRate,
+      totalTimeInSeconds,
+    });
+  }
+
+  private buildAnalysisPeriod(input: GetStatsInput): GetStatsAnalysisPeriod {
+    return {
+      fromDate: dayjs.utc(input.from).startOf("day"),
+      toDate: dayjs.utc(input.to).endOf("day"),
+    };
+  }
+
+  private async findActiveWorkoutPlan(userId: string) {
+    const activeWorkoutPlan = await prisma.workoutPlan.findFirst({
+      where: { userId, isActive: true },
       include: {
         workoutDays: {
           include: { sessions: true },
@@ -50,26 +102,34 @@ export class GetStats {
       },
     });
 
-    if (!workoutPlan) {
+    if (!activeWorkoutPlan) {
       throw new NotFoundError("Active workout plan not found");
     }
 
-    const sessions = await prisma.workoutSession.findMany({
+    return activeWorkoutPlan;
+  }
+
+  private async findSessionsInPeriod(
+    workoutPlanId: string,
+    analysisPeriod: GetStatsAnalysisPeriod,
+  ) {
+    return prisma.workoutSession.findMany({
       where: {
         workoutDay: {
-          workoutPlanId: workoutPlan.id,
+          workoutPlanId,
         },
         startedAt: {
-          gte: fromDate.toDate(),
-          lte: toDate.toDate(),
+          gte: analysisPeriod.fromDate.toDate(),
+          lte: analysisPeriod.toDate.toDate(),
         },
       },
     });
+  }
 
-    const consistencyByDay: Record<
-      string,
-      { workoutDayCompleted: boolean; workoutDayStarted: boolean }
-    > = {};
+  private buildConsistencyByDay(
+    sessions: GetStatsSession[],
+  ): Record<string, GetStatsConsistencyByDay> {
+    const consistencyByDay: Record<string, GetStatsConsistencyByDay> = {};
 
     sessions.forEach((session) => {
       const dateKey = dayjs.utc(session.startedAt).format("YYYY-MM-DD");
@@ -88,29 +148,50 @@ export class GetStats {
       }
     });
 
-    const completedSessions = sessions.filter((s) => s.completedAt !== null);
-    const completedWorkoutsCount = completedSessions.length;
-    const conclusionRate =
-      sessions.length > 0 ? completedWorkoutsCount / sessions.length : 0;
+    return consistencyByDay;
+  }
 
-    const totalTimeInSeconds = completedSessions.reduce((total, session) => {
+  private findCompletedSessions(
+    sessions: GetStatsSession[],
+  ): GetStatsCompletedSession[] {
+    return sessions.filter(this.isCompletedSession);
+  }
+
+  private calculateConclusionRate(
+    totalSessionsCount: number,
+    completedWorkoutsCount: number,
+  ): number {
+    return totalSessionsCount > 0
+      ? completedWorkoutsCount / totalSessionsCount
+      : 0;
+  }
+
+  private calculateTotalTimeInSeconds(
+    completedSessions: GetStatsCompletedSession[],
+  ): number {
+    return completedSessions.reduce((total, session) => {
       const start = dayjs.utc(session.startedAt);
-      const end = dayjs.utc(session.completedAt!);
+      const end = dayjs.utc(session.completedAt);
+
       return total + end.diff(start, "second");
     }, 0);
+  }
 
-    const workoutStreak = await this.calculateStreak(
-      workoutPlan.id,
-      workoutPlan.workoutDays,
-      toDate
-    );
+  private isCompletedSession(
+    session: GetStatsSession,
+  ): session is GetStatsCompletedSession {
+    return session.completedAt !== null;
+  }
 
+  private buildGetStatsResponse(
+    stats: GetStatsOutput,
+  ): GetStatsOutput {
     return {
-      workoutStreak,
-      consistencyByDay,
-      completedWorkoutsCount,
-      conclusionRate,
-      totalTimeInSeconds,
+      workoutStreak: stats.workoutStreak,
+      consistencyByDay: stats.consistencyByDay,
+      completedWorkoutsCount: stats.completedWorkoutsCount,
+      conclusionRate: stats.conclusionRate,
+      totalTimeInSeconds: stats.totalTimeInSeconds,
     };
   }
 
@@ -120,11 +201,13 @@ export class GetStats {
       weekDay: string;
       isRest: boolean;
     }>,
-    currentDate: dayjs.Dayjs
+    currentDate: dayjs.Dayjs,
   ): Promise<number> {
-    const planWeekDays = new Set(workoutDays.map((d) => d.weekDay));
+    const workoutPlanWeekDays = new Set(workoutDays.map((workoutDay) => workoutDay.weekDay));
     const restWeekDays = new Set(
-      workoutDays.filter((d) => d.isRest).map((d) => d.weekDay)
+      workoutDays
+        .filter((workoutDay) => workoutDay.isRest)
+        .map((workoutDay) => workoutDay.weekDay),
     );
 
     const allSessions = await prisma.workoutSession.findMany({
@@ -145,7 +228,7 @@ export class GetStats {
     for (let i = 0; i < 365; i++) {
       const weekDay = WEEKDAY_MAP[day.day()];
 
-      if (!planWeekDays.has(weekDay)) {
+      if (!workoutPlanWeekDays.has(weekDay)) {
         day = day.subtract(1, "day");
         continue;
       }

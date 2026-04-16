@@ -1,6 +1,6 @@
 import { prisma } from "../lib/db.js";
 
-interface InputDto {
+interface UpsertUserTrainDataInput {
   userId: string;
   weightInGrams: number;
   heightInCentimeters: number;
@@ -8,7 +8,7 @@ interface InputDto {
   bodyFatPercentage: number;
 }
 
-interface OutputDto {
+interface UpsertUserTrainDataOutput {
   userId: string;
   weightInGrams: number;
   heightInCentimeters: number;
@@ -17,17 +17,29 @@ interface OutputDto {
 }
 
 export class UpsertUserTrainData {
-  async execute(dto: InputDto): Promise<OutputDto> {
+  async execute(
+    input: UpsertUserTrainDataInput,
+  ): Promise<UpsertUserTrainDataOutput> {
     const user = await prisma.user.update({
-      where: { id: dto.userId },
+      where: { id: input.userId },
       data: {
-        weightInGrams: dto.weightInGrams,
-        heightInCentimeters: dto.heightInCentimeters,
-        age: dto.age,
-        bodyFatPercentage: dto.bodyFatPercentage,
+        weightInGrams: input.weightInGrams,
+        heightInCentimeters: input.heightInCentimeters,
+        age: input.age,
+        bodyFatPercentage: input.bodyFatPercentage,
       },
     });
 
+    return this.buildUpsertUserTrainDataResponse(user);
+  }
+
+  private buildUpsertUserTrainDataResponse(user: {
+    id: string;
+    weightInGrams: number | null;
+    heightInCentimeters: number | null;
+    age: number | null;
+    bodyFatPercentage: number | null;
+  }): UpsertUserTrainDataOutput {
     return {
       userId: user.id,
       weightInGrams: user.weightInGrams!,
