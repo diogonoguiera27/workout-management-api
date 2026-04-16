@@ -1,7 +1,7 @@
 import { convertToModelMessages, stepCountIs, streamText, tool, } from "ai";
 import { fromNodeHeaders } from "better-auth/node";
 import z from "zod";
-import { WeekDay } from "../generated/prisma/enums.js";
+import { WeekDay } from "@prisma/client";
 import { auth } from "../lib/auth.js";
 import { CreateWorkoutPlan } from "../usecases/CreateWorkoutPlan.js";
 import { GetUserTrainData } from "../usecases/GetUserTrainData.js";

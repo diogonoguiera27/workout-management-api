@@ -31,6 +31,7 @@ FROM base AS production
 
 RUN pnpm install --frozen-lockfile --prod
 
+COPY package.json ./
 COPY --from=build /app/dist ./dist
 
 CMD ["node", "dist/index.js"]

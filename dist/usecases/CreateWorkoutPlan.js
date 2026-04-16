@@ -1,48 +1,14 @@
 import { NotFoundError } from "../errors/index.js";
 import { prisma } from "../lib/db.js";
 export class CreateWorkoutPlan {
-    async execute(dto) {
-        const existingWorkoutPlan = await prisma.workoutPlan.findFirst({
-            where: {
-                isActive: true,
-            },
-        });
-        // Transaction - Atomicidade
-        return prisma.$transaction(async (tx) => {
-            if (existingWorkoutPlan) {
-                await tx.workoutPlan.update({
-                    where: { id: existingWorkoutPlan.id },
-                    data: { isActive: false },
-                });
-            }
-            const workoutPlan = await tx.workoutPlan.create({
-                data: {
-                    id: crypto.randomUUID(),
-                    name: dto.name,
-                    userId: dto.userId,
-                    isActive: true,
-                    workoutDays: {
-                        create: dto.workoutDays.map((workoutDay) => ({
-                            name: workoutDay.name,
-                            weekDay: workoutDay.weekDay,
-                            isRest: workoutDay.isRest,
-                            estimatedDurationInSeconds: workoutDay.estimatedDurationInSeconds,
-                            coverImageUrl: workoutDay.coverImageUrl,
-                            exercises: {
-                                create: workoutDay.exercises.map((exercise) => ({
-                                    name: exercise.name,
-                                    order: exercise.order,
-                                    sets: exercise.sets,
-                                    reps: exercise.reps,
-                                    restTimeInSeconds: exercise.restTimeInSeconds,
-                                })),
-                            },
-                        })),
-                    },
-                },
+    async execute(input) {
+        return prisma.$transaction(async (transaction) => {
+            await this.deactivateCurrentActiveWorkoutPlan(transaction, input.userId);
+            const createdWorkoutPlan = await transaction.workoutPlan.create({
+                data: this.buildWorkoutPlanCreateData(input),
             });
-            const result = await tx.workoutPlan.findUnique({
-                where: { id: workoutPlan.id },
+            const workoutPlanDetails = await transaction.workoutPlan.findUnique({
+                where: { id: createdWorkoutPlan.id },
                 include: {
                     workoutDays: {
                         include: {
@@ -51,27 +17,87 @@ export class CreateWorkoutPlan {
                     },
                 },
             });
-            if (!result) {
+            if (!workoutPlanDetails) {
                 throw new NotFoundError("Workout plan not found");
             }
-            return {
-                id: result.id,
-                name: result.name,
-                workoutDays: result.workoutDays.map((day) => ({
-                    name: day.name,
-                    weekDay: day.weekDay,
-                    isRest: day.isRest,
-                    estimatedDurationInSeconds: day.estimatedDurationInSeconds,
-                    coverImageUrl: day.coverImageUrl ?? undefined,
-                    exercises: day.exercises.map((exercise) => ({
-                        order: exercise.order,
-                        name: exercise.name,
-                        sets: exercise.sets,
-                        reps: exercise.reps,
-                        restTimeInSeconds: exercise.restTimeInSeconds,
-                    })),
-                })),
-            };
+            return this.buildWorkoutPlanResponse(workoutPlanDetails);
         });
+    }
+    async deactivateCurrentActiveWorkoutPlan(transaction, userId) {
+        const activeWorkoutPlan = await transaction.workoutPlan.findFirst({
+            where: {
+                userId,
+                isActive: true,
+            },
+        });
+        if (!activeWorkoutPlan) {
+            return;
+        }
+        await transaction.workoutPlan.update({
+            where: { id: activeWorkoutPlan.id },
+            data: { isActive: false },
+        });
+    }
+    buildWorkoutPlanCreateData(input) {
+        return {
+            id: crypto.randomUUID(),
+            name: input.name,
+            isActive: true,
+            user: {
+                connect: {
+                    id: input.userId,
+                },
+            },
+            workoutDays: {
+                create: input.workoutDays.map((workoutDay) => this.buildWorkoutDayCreateData(workoutDay)),
+            },
+        };
+    }
+    buildWorkoutDayCreateData(workoutDay) {
+        return {
+            name: workoutDay.name,
+            weekDay: workoutDay.weekDay,
+            isRest: workoutDay.isRest,
+            estimatedDurationInSeconds: workoutDay.estimatedDurationInSeconds,
+            coverImageUrl: workoutDay.coverImageUrl,
+            exercises: {
+                create: workoutDay.exercises.map((exercise) => this.buildExerciseCreateData(exercise)),
+            },
+        };
+    }
+    buildExerciseCreateData(exercise) {
+        return {
+            name: exercise.name,
+            order: exercise.order,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            restTimeInSeconds: exercise.restTimeInSeconds,
+        };
+    }
+    buildWorkoutPlanResponse(workoutPlan) {
+        return {
+            id: workoutPlan.id,
+            name: workoutPlan.name,
+            workoutDays: workoutPlan.workoutDays.map((workoutDay) => this.buildWorkoutDayResponse(workoutDay)),
+        };
+    }
+    buildWorkoutDayResponse(workoutDay) {
+        return {
+            name: workoutDay.name,
+            weekDay: workoutDay.weekDay,
+            isRest: workoutDay.isRest,
+            estimatedDurationInSeconds: workoutDay.estimatedDurationInSeconds,
+            coverImageUrl: workoutDay.coverImageUrl ?? undefined,
+            exercises: workoutDay.exercises.map((exercise) => this.buildExerciseResponse(exercise)),
+        };
+    }
+    buildExerciseResponse(exercise) {
+        return {
+            order: exercise.order,
+            name: exercise.name,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            restTimeInSeconds: exercise.restTimeInSeconds,
+        };
     }
 }

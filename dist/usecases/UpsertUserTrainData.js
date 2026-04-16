@@ -1,15 +1,18 @@
 import { prisma } from "../lib/db.js";
 export class UpsertUserTrainData {
-    async execute(dto) {
+    async execute(input) {
         const user = await prisma.user.update({
-            where: { id: dto.userId },
+            where: { id: input.userId },
             data: {
-                weightInGrams: dto.weightInGrams,
-                heightInCentimeters: dto.heightInCentimeters,
-                age: dto.age,
-                bodyFatPercentage: dto.bodyFatPercentage,
+                weightInGrams: input.weightInGrams,
+                heightInCentimeters: input.heightInCentimeters,
+                age: input.age,
+                bodyFatPercentage: input.bodyFatPercentage,
             },
         });
+        return this.buildUpsertUserTrainDataResponse(user);
+    }
+    buildUpsertUserTrainDataResponse(user) {
         return {
             userId: user.id,
             weightInGrams: user.weightInGrams,

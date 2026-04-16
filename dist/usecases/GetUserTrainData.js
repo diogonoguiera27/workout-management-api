@@ -1,18 +1,24 @@
 import { prisma } from "../lib/db.js";
 export class GetUserTrainData {
-    async execute(dto) {
+    async execute(input) {
         const user = await prisma.user.findUnique({
-            where: { id: dto.userId },
+            where: { id: input.userId },
         });
         if (!user) {
             return null;
         }
-        if (user.weightInGrams === null ||
-            user.heightInCentimeters === null ||
-            user.age === null ||
-            user.bodyFatPercentage === null) {
+        if (!this.hasCompleteTrainData(user)) {
             return null;
         }
+        return this.buildGetUserTrainDataResponse(user);
+    }
+    hasCompleteTrainData(user) {
+        return !(user.weightInGrams === null ||
+            user.heightInCentimeters === null ||
+            user.age === null ||
+            user.bodyFatPercentage === null);
+    }
+    buildGetUserTrainDataResponse(user) {
         return {
             userId: user.id,
             userName: user.name,

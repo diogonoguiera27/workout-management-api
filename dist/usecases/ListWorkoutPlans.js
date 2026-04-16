@@ -1,10 +1,10 @@
 import { prisma } from "../lib/db.js";
 export class ListWorkoutPlans {
-    async execute(dto) {
+    async execute(input) {
         const workoutPlans = await prisma.workoutPlan.findMany({
             where: {
-                userId: dto.userId,
-                ...(dto.active !== undefined ? { isActive: dto.active } : {}),
+                userId: input.userId,
+                ...(input.active !== undefined ? { isActive: input.active } : {}),
             },
             include: {
                 workoutDays: {
@@ -15,18 +15,21 @@ export class ListWorkoutPlans {
             },
             orderBy: { createdAt: "desc" },
         });
-        return workoutPlans.map((plan) => ({
-            id: plan.id,
-            name: plan.name,
-            isActive: plan.isActive,
-            workoutDays: plan.workoutDays.map((day) => ({
-                id: day.id,
-                name: day.name,
-                weekDay: day.weekDay,
-                isRest: day.isRest,
-                estimatedDurationInSeconds: day.estimatedDurationInSeconds,
-                coverImageUrl: day.coverImageUrl ?? undefined,
-                exercises: day.exercises.map((exercise) => ({
+        return this.buildWorkoutPlansResponse(workoutPlans);
+    }
+    buildWorkoutPlansResponse(workoutPlans) {
+        return workoutPlans.map((workoutPlan) => ({
+            id: workoutPlan.id,
+            name: workoutPlan.name,
+            isActive: workoutPlan.isActive,
+            workoutDays: workoutPlan.workoutDays.map((workoutDay) => ({
+                id: workoutDay.id,
+                name: workoutDay.name,
+                weekDay: workoutDay.weekDay,
+                isRest: workoutDay.isRest,
+                estimatedDurationInSeconds: workoutDay.estimatedDurationInSeconds,
+                coverImageUrl: workoutDay.coverImageUrl ?? undefined,
+                exercises: workoutDay.exercises.map((exercise) => ({
                     id: exercise.id,
                     order: exercise.order,
                     name: exercise.name,

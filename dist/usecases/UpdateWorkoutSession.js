@@ -1,29 +1,41 @@
 import { NotFoundError } from "../errors/index.js";
 import { prisma } from "../lib/db.js";
 export class UpdateWorkoutSession {
-    async execute(dto) {
-        const workoutPlan = await prisma.workoutPlan.findUnique({
-            where: { id: dto.workoutPlanId },
+    async execute(input) {
+        await this.ensureWorkoutPlanExists(input);
+        await this.ensureWorkoutDayExists(input);
+        await this.ensureWorkoutSessionExists(input);
+        const updatedSession = await prisma.workoutSession.update({
+            where: { id: input.sessionId },
+            data: { completedAt: new Date(input.completedAt) },
         });
-        if (!workoutPlan || workoutPlan.userId !== dto.userId) {
+        return this.buildUpdateWorkoutSessionResponse(updatedSession);
+    }
+    async ensureWorkoutPlanExists(input) {
+        const workoutPlan = await prisma.workoutPlan.findUnique({
+            where: { id: input.workoutPlanId },
+        });
+        if (!workoutPlan || workoutPlan.userId !== input.userId) {
             throw new NotFoundError("Workout plan not found");
         }
+    }
+    async ensureWorkoutDayExists(input) {
         const workoutDay = await prisma.workoutDay.findUnique({
-            where: { id: dto.workoutDayId, workoutPlanId: dto.workoutPlanId },
+            where: { id: input.workoutDayId, workoutPlanId: input.workoutPlanId },
         });
         if (!workoutDay) {
             throw new NotFoundError("Workout day not found");
         }
+    }
+    async ensureWorkoutSessionExists(input) {
         const session = await prisma.workoutSession.findUnique({
-            where: { id: dto.sessionId, workoutDayId: dto.workoutDayId },
+            where: { id: input.sessionId, workoutDayId: input.workoutDayId },
         });
         if (!session) {
             throw new NotFoundError("Workout session not found");
         }
-        const updatedSession = await prisma.workoutSession.update({
-            where: { id: dto.sessionId },
-            data: { completedAt: new Date(dto.completedAt) },
-        });
+    }
+    buildUpdateWorkoutSessionResponse(updatedSession) {
         return {
             id: updatedSession.id,
             startedAt: updatedSession.startedAt.toISOString(),
